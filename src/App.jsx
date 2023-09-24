@@ -1,9 +1,34 @@
 import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import aleoLogo from "./assets/aleo.svg";
 import "./App.css";
 import helloworld_program from "../helloworld/build/main.aleo?raw";
 import { AleoWorker } from "./workers/AleoWorker.js";
+import { Board } from "./TicTacToe.jsx";
+
+function toUnquotedJSON(param){ // Implemented by Frostbolt Games 2022
+  if(Array.isArray(param)){ // In case of an array, recursively call our function on each element.
+      let results = [];
+      for(let elem of param){
+          results.push(toUnquotedJSON(elem));
+      }
+      return "[" + results.join(",") + "]";
+  }
+  else if(typeof param === "object"){ // In case of an object, loop over its keys and only add quotes around keys that aren't valid JavaScript variable names. Recursively call our function on each value.
+      let props = Object
+          .keys(param)
+          .map(function(key){
+              // A valid JavaScript variable name starts with a dollar sign (?), underscore (_) or letter (a-zA-Z), followed by zero or more dollar signs, underscores or alphanumeric (a-zA-Z\d) characters.
+              if(key.match(/^[a-zA-Z_$][a-zA-Z\d_$]*$/) === null) // If the key isn't a valid JavaScript variable name, we need to add quotes.
+                  return `"${key}":${toUnquotedJSON(param[key])}`;
+              else
+                  return `${key}:${toUnquotedJSON(param[key])}`;
+          })
+          .join(",");
+      return `{${props}}`;
+  }
+  else{ // For every other value, simply use the native JSON.stringify() function.
+      return JSON.stringify(param);
+  }
+}
 
 const aleoWorker = AleoWorker();
 function App() {
@@ -12,52 +37,40 @@ function App() {
   const [executing, setExecuting] = useState(false);
   const [deploying, setDeploying] = useState(false);
 
+  const [squares, setSquares] = useState({
+    r1: { c1: "0u8", c2: "0u8", c3: "0u8" },
+    r2: { c1: "0u8", c2: "0u8", c3: "0u8" },
+    r3: { c1: "0u8", c2: "0u8", c3: "0u8" },
+  });
+
+  const [playerTurn, setPlayerTurn] = useState(1);
+
   const generateAccount = async () => {
     const key = await aleoWorker.getPrivateKey();
     setAccount(await key.to_string());
   };
 
-  async function execute() {
+  async function execute(r, c) {
     setExecuting(true);
+    console.log([`${playerTurn}u8`, `${r}u8`, `${c}u8`, toUnquotedJSON(squares).replaceAll("\"", "")])
     const result = await aleoWorker.localProgramExecution(
       helloworld_program,
-      "main",
-      ["5u32", "5u32"],
+      "make_move",
+      [`${playerTurn}u8`, `${r}u8`, `${c}u8`, toUnquotedJSON(squares).replaceAll("\"", "")],
     );
     setExecuting(false);
+    let squareCopy = squares;
+    squareCopy[`r${r}`][`c${c}`] = `${playerTurn}u8`;
+    setSquares(squareCopy);
+    setPlayerTurn(playerTurn === 1 ? 2 : 1);
 
-    alert(JSON.stringify(result));
-  }
-
-  async function deploy() {
-    setDeploying(true);
-    try {
-      const result = await aleoWorker.deployProgram(helloworld_program);
-      console.log("Transaction:")
-      console.log("https://explorer.hamp.app/transaction?id=" + result)
-      alert("Transaction ID: " + result);
-    } catch (e) {
-      console.log(e)
-      alert("Error with deployment, please check console for details");
-    }
-    setDeploying(false);
+    console.log(result);
   }
 
   return (
-    <>
-      <div>
-        <a href="https://aleo.org" target="_blank">
-          <img src={aleoLogo} className="logo" alt="Aleo logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
+    <div style={{backgroundColor: "white"}}>
       <h1>Aleo + React</h1>
       <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
         <p>
           <button onClick={generateAccount}>
             {account
@@ -65,38 +78,9 @@ function App() {
               : `Click to generate account`}
           </button>
         </p>
-        <p>
-          <button disabled={executing} onClick={execute}>
-            {executing
-              ? `Executing...check console for details...`
-              : `Execute helloworld.aleo`}
-          </button>
-        </p>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
       </div>
-
-      {/* Advanced Section */}
-      <div className="card">
-        <h2>Advanced Actions</h2>
-        <p>
-          Deployment on Aleo requires certain prerequisites like seeding your
-          wallet with credits and retrieving a fee record. Check README for more
-          details.
-        </p>
-        <p>
-          <button disabled={deploying} onClick={deploy}>
-            {deploying
-              ? `Deploying...check console for details...`
-              : `Deploy helloworld.aleo`}
-          </button>
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Aleo and React logos to learn more
-      </p>
-    </>
+      <Board squares={squares} onPlay={execute} />
+    </div>
   );
 }
 
